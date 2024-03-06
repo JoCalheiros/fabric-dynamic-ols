@@ -1,0 +1,17 @@
+{
+    
+    "ConnectionAzureSQL": {
+        "ServerName" : "*ServerName*",
+        "DatabaseName" : "*DatabaseName*",
+        "Username" : "*Username*",
+        "Password" : "*Password*"
+    },
+
+
+    "ServiceAuth": {
+        "servicePrincipalId" : "*ServicePrincipalId*",
+        "servicePrincipalSecret" : "*ServicePrincipalSecret*",
+        "TenantId" : "*TenantId*"
+    }
+    
+}
