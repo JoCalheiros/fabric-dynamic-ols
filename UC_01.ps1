@@ -1,5 +1,5 @@
 param(
-	[string] $bimFileRelPath = "SalesReport\SalesReport.Dataset\model.bim"
+	[string] $bimFileRelPath = "ExportPath\03221cab-dbcc-4273-a897-324782236c2d\Sales.SemanticModel\model.bim"
 )
 
 $currentPath = (Split-Path $MyInvocation.MyCommand.Definition -Parent)
@@ -18,4 +18,3 @@ $salesTableColumn.name = "Total"
 #Output to BIM
 write-host "Writing output bim file"
 $model | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $bimFilePath -Encoding utf8
-
