@@ -1,12 +1,11 @@
 param(
-	[string] $bimFileRelPath = "SalesReport\SalesReport.Dataset\model.bim",
-    [string] $configRelPath = "Parameters.json",
-    [string] $queryPermissions = "Queries\Permissions.sql",
-    [string] $queryRoles = "Queries\Roles.sql",
-    [string] $exportRelPath = "ExportPath",
+    [string] $configRelPath = "ParametersExample.json",
     [string] $workspaceId = "your-workspace-id",
     [string] $datasetId = "your-dataset-id",
-    [string] $datasetName = "SalesReport"
+    [string] $datasetName = "Sales",
+    [string] $queryPermissions = "Queries\Permissions.sql",
+    [string] $queryRoles = "Queries\Roles.sql",
+    [string] $exportRelPath = "ExportPath"
 )
 
 function GenerateHash {
@@ -76,15 +75,12 @@ $queryRoles = Get-Content -Path "$currentPath\$queryRoles"
 $queryPermissions = Get-Content -Path "$currentPath\$queryPermissions"
 
 #Export BIM file
-$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath"
-Export-FabricItems -path $exportPath -workspaceId $workspaceId -filter {$_.id -eq $datasetId}
-
-# #Export Semantic Model from Service
-# exit
+$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath\$workspaceId\$datasetName.SemanticModel"
+Export-FabricItem -path $exportPath -workspaceId $workspaceId -itemId $datasetId -format "TMSL"
 
 #Dataset parameters
 write-host "##[group] | Getting Model BIM" 
-$bimFilePath = "$exportPath\$workspaceId\$datasetName.SemanticModel\model.bim"
+$bimFilePath = "$exportPath\model.bim"
 $model = Get-Content -Path $bimFilePath -Encoding utf8 | ConvertFrom-Json
 
 #Creating roles object
@@ -120,10 +116,6 @@ foreach($dbRole in $dbRoles){
     }    
 }
 
-# # Writing BIM file with only the Roles
-# $model | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $bimFilePath -Encoding utf8
-# exit
-
 #Adding Permissions to the Roles
 $dbRolePermissions = Query-AzureDB -DBConnectionString $connectionString -query $queryPermissions
 foreach($dbRolePermission in $dbRolePermissions){
@@ -143,7 +135,7 @@ foreach($dbRolePermission in $dbRolePermissions){
     $selectedTable = $selectedRole.tablePermissions | Where-Object {$_.name -eq $table}
 
     #Add table to table permissions
-    if(!$selectedTable ){
+    if(!$selectedTable){
         $newTable = [PSCustomObject]@{
             "name" = $table
             "filterExpression" = @()
@@ -152,14 +144,11 @@ foreach($dbRolePermission in $dbRolePermissions){
         $selectedRole.tablePermissions += $newTable
     }
 
-    # #Writing BIM file with the tables in the table permissions
-    # Comment the below section and import-FabricItems
-
     #Check column in BIM model
     $selectedColumnPermission = $selectedTable.columnPermissions | Where-Object {$_.name -eq $column}
 
     #Add column permissions
-    if(!$selectedColumnPermission ){
+    if(!$selectedColumnPermission){
         $newColumnPermission = [PSCustomObject]@{
             "name" = $column
             "metadataPermission" = $columnPermission
@@ -177,4 +166,4 @@ foreach($dbRolePermission in $dbRolePermissions){
 write-host "Writing output bim file"
 $model | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $bimFilePath -Encoding utf8
 
-Import-FabricItems -workspaceId $workspaceId -path "$exportPath\$workspaceId\$datasetName.SemanticModel"
+Import-FabricItems -workspaceId $workspaceId -path $exportPath
