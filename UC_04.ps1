@@ -1,23 +1,11 @@
 param(
-	[string] $bimFileRelPath = "SalesReport\SalesReport.Dataset\model.bim",
-    [string] $configRelPath = "Parameters.json",
-    [string] $queryPermissions = "Queries\Permissions.sql",
-    [string] $querySchema = "Queries\TableSchema.sql",
-    [string] $exportRelPath = "ExportPath",
+    [string] $configRelPath = "ParametersExample.json",
     [string] $workspaceId = "your-workspace-id",
     [string] $datasetId = "your-dataset-id",
-    [string] $datasetName = "SalesReport"
+    [string] $datasetName = "Sales",
+    [string] $querySchema = "Queries\TableSchema.sql",
+    [string] $exportRelPath = "ExportPath"
 )
-
-function Decode-SecureString {
-    param(
-        [string]$InputString
-    )
-
-    $securePassword = $InputString | ConvertTo-SecureString
-    $plainTextPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
-    return $plainTextPassword
-}
 
 function GenerateHash {
     param(
@@ -64,38 +52,37 @@ $currentPath = (Split-Path $MyInvocation.MyCommand.Definition -Parent)
 
 Import-Module "$currentPath\modules\FabricPS-PBIP" 
 
-#Get Config
+# Get Config
 $configPath = "$currentPath\$configRelPath"
 $config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
 
-#Fabric Authentication
-$servicePrincipalId = Decode-SecureString $config.ServiceAuth.servicePrincipalId
-$servicePrincipalSecret = Decode-SecureString $config.ServiceAuth.servicePrincipalSecret 
-$tenantId = Decode-SecureString $config.ServiceAuth.tenantId 
+# Fabric Authentication
+$servicePrincipalId =  $config.ServiceAuth.servicePrincipalId
+$servicePrincipalSecret = $config.ServiceAuth.servicePrincipalSecret 
+$tenantId = $config.ServiceAuth.tenantId 
 Set-FabricAuthToken -servicePrincipalId $servicePrincipalId -servicePrincipalSecret $servicePrincipalSecret -tenantId $tenantId -reset
 
-#AzureDB Authentication
+# AzureDB Authentication
 $serverName = $config.ConnectionAzureSQL.serverName
 $databaseName = $config.ConnectionAzureSQL.DatabaseName 
 $azureUsername= $config.ConnectionAzureSQL.Username 
-$azurePassword= Decode-SecureString  $config.ConnectionAzureSQL.Password
+$azurePassword= $config.ConnectionAzureSQL.Password
 $connectionString = "Server=tcp:$serverName,1433;Initial Catalog=$databaseName;Persist Security Info=False;User ID=$azureUsername;Password=$azurePassword;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
 
-# SQL Query
-$querySchema = Get-Content -Path "$currentPath\$querySchema"
-$queryPermissions = Get-Content -Path "$currentPath\$queryPermissions"
-
-$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath"
-Export-FabricItems -path $exportPath -workspaceId $workspaceId -filter {$_.type -eq "SemanticModel" -and $_.id -eq $datasetId}
-
-#Dataset parameters
+# Exporting Dataset from Fabric
 write-host "##[group] | Getting Model BIM" 
-$bimFilePath = "$exportPath\$workspaceId\$datasetName.SemanticModel\model.bim"
+$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath\$workspaceId\$datasetName.SemanticModel"
+Export-FabricItem -path $exportPath -workspaceId $workspaceId -itemId $datasetId -format "TMSL"
+
+# Get Model BIM
+$bimFilePath = "$exportPath\model.bim"
 $model = Get-Content -Path $bimFilePath -Encoding utf8 | ConvertFrom-Json
 
+#Query DB Schema
+$querySchema = Get-Content -Path "$currentPath\$querySchema"
 $dbSchema = Query-AzureDB -DBConnectionString $connectionString -query $querySchema
 
-#Filter Tables that ahve "Source Table" annotation
+#Filter Tables that have "Source Table" annotation
 $tables = $model.model.tables
 $tables = $tables | Where-Object {$_.annotations.name -eq "SourceTable"}
 
@@ -114,8 +101,10 @@ $tables | ForEach-Object {
     $fieldsToAdd | ForEach-Object {
         $field = $_
         
+        #Check if DB Column is on BIM Model
         $fieldOnBIM = $table.columns | Where-Object { $_.name -eq $field.Column }
 
+        #Add Column if not in BIM Model
         if (!$fieldOnBIM)
         {
             write-host "Adding field '$($field.Column)' to the table '$($table.name)'"
@@ -132,12 +121,12 @@ $tables | ForEach-Object {
 
     }
 
+    #Check if bim fields are not in DB
     $bimFieldNames = $table.columns.name
     $dbFieldNames = $fieldsToAdd.Column
-
-    #Check if bim field are not in DB
     $fieldsNamestoRemove = $bimFieldNames | Where-Object { $dbFieldNames -notcontains $_ }
 
+    #If BIM Fields are not in DB Columns then remove them
     $fieldsNamestoRemove | ForEach-Object {
         $fieldName = $_
         write-host "Removing field '$fieldName' from the table '$($table.name)'"
@@ -151,4 +140,4 @@ $tables | ForEach-Object {
 write-host "Writing output bim file"
 $model | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $bimFilePath -Encoding utf8
 
-Import-FabricItems -workspaceId $workspaceId -path "$exportPath\$workspaceId\$datasetName.SemanticModel"
+Import-FabricItems -workspaceId $workspaceId -path $exportPath
