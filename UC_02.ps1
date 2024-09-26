@@ -1,23 +1,29 @@
 param(
-	[string] $bimFileRelPath = "SalesReport\SalesReport.Dataset\model.bim",
-	[string] $tenantId = "your-tenant-id",
+	[string] $configRelPath = "ParametersExample.json",
 	[string] $workspaceId = "your-workspace-id",
-	[string] $ExportRelPath = "ExportPath",
 	[string] $datasetId = "your-dataset-id",
-	[string] $datasetName = "SalesReport"
+	[string] $datasetName = "Sales",
+	[string] $ExportRelPath = "ExportPath"
 )
 
 $currentPath = (Split-Path $MyInvocation.MyCommand.Definition -Parent)
-
-
 Import-Module "$currentPath\modules\FabricPS-PBIP" -Force
-Set-FabricAuthToken -tenantId $tenantId -reset
 
-$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath"
-Export-FabricItems -path $exportPath -workspaceId $workspaceId -filter { $_.id -eq $datasetId}
+#Get Config
+$configPath = "$currentPath\$configRelPath"
+$config = Get-Content -Raw -Path $configPath | ConvertFrom-Json
+
+#Fabric Authentication
+$servicePrincipalId = $config.ServiceAuth.servicePrincipalId
+$servicePrincipalSecret = $config.ServiceAuth.servicePrincipalSecret 
+$tenantId = $config.ServiceAuth.tenantId
+Set-FabricAuthToken -servicePrincipalId $servicePrincipalId -servicePrincipalSecret $servicePrincipalSecret -tenantId $tenantId -reset
+
+$exportPath = Join-Path (Split-Path $currentPath -Parent) "\$ExportRelPath\$workspaceId\$datasetName.SemanticModel"
+Export-FabricItem -path $exportPath -workspaceId $workspaceId -itemId $datasetId -format "TMSL"
 
 #Dataset parameters
-$bimFilePath = "$exportPath\$workspaceId\$datasetName.SemanticModel\model.bim"
+$bimFilePath = "$exportPath\model.bim"
 
 write-host "##[group] | Getting Model BIM" 
 $model = Get-Content -Path $bimFilePath -Encoding utf8 | ConvertFrom-Json
@@ -31,4 +37,4 @@ $salesTableColumn.name = "Total"
 write-host "Writing output bim file"
 $model | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $bimFilePath -Encoding utf8
 
-Import-FabricItems -workspaceId $workspaceId -path "$exportPath\$workspaceId\$datasetName.SemanticModel"
+Import-FabricItems -workspaceId $workspaceId -path $exportPath
